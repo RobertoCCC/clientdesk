@@ -2,6 +2,10 @@
 
 Demo de portal de clientes e gestão de tickets para PMEs. O objetivo é mostrar como uma empresa pode substituir pedidos espalhados por email, WhatsApp e chamadas por um fluxo claro de suporte.
 
+## Demo online
+
+[https://clientdesk-pi.vercel.app](https://clientdesk-pi.vercel.app)
+
 ## Funcionalidades
 
 - Dashboard com tickets abertos, urgentes, resolvidos e tempo médio de resposta
