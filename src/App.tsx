@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -38,6 +38,32 @@ const priorityLabels: Record<TicketPriority, string> = {
 
 const statusOrder: TicketStatus[] = ["new", "triage", "waiting", "resolved"];
 
+const storageKey = "clientdesk:tickets:v1";
+
+const slaMinutes: Record<TicketPriority, number> = {
+  low: 240,
+  normal: 120,
+  high: 60,
+  urgent: 30,
+};
+
+function readStoredTickets() {
+  try {
+    const value = window.localStorage.getItem(storageKey);
+    return value ? (JSON.parse(value) as Ticket[]) : initialTickets;
+  } catch {
+    return initialTickets;
+  }
+}
+
+function writeStoredTickets(tickets: Ticket[]) {
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify(tickets));
+  } catch {
+    // A demo continua funcional mesmo sem storage disponível.
+  }
+}
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -52,8 +78,23 @@ function nextStatus(status: TicketStatus): TicketStatus {
   return statusOrder[Math.min(index + 1, statusOrder.length - 1)];
 }
 
+function getSlaState(ticket: Ticket) {
+  if (ticket.status === "resolved") return "ok";
+  if (ticket.firstResponseMinutes === 0) return "risk";
+  if (ticket.firstResponseMinutes > slaMinutes[ticket.priority]) return "late";
+  if (ticket.firstResponseMinutes > slaMinutes[ticket.priority] * 0.75) return "risk";
+  return "ok";
+}
+
+function getSlaLabel(ticket: Ticket) {
+  const state = getSlaState(ticket);
+  if (state === "late") return "SLA expirado";
+  if (state === "risk") return "SLA em risco";
+  return "Dentro do SLA";
+}
+
 export function App() {
-  const [tickets, setTickets] = useState<Ticket[]>(initialTickets);
+  const [tickets, setTickets] = useState<Ticket[]>(readStoredTickets);
   const [selectedTicketId, setSelectedTicketId] = useState(initialTickets[0].id);
   const [query, setQuery] = useState("");
   const [activeStatus, setActiveStatus] = useState<TicketStatus | "all">("all");
@@ -63,6 +104,10 @@ export function App() {
 
   const selectedTicket =
     tickets.find((ticket) => ticket.id === selectedTicketId) ?? tickets[0];
+
+  useEffect(() => {
+    writeStoredTickets(tickets);
+  }, [tickets]);
 
   const filteredTickets = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -126,6 +171,50 @@ export function App() {
     );
   }
 
+  function addReply(ticketId: string, formData: FormData) {
+    const body = String(formData.get("reply") ?? "").trim();
+    if (!body) return;
+
+    setTickets((current) =>
+      current.map((ticket) =>
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              updatedAt: "2026-05-27 16:35",
+              firstResponseMinutes:
+                ticket.firstResponseMinutes === 0 ? 18 : ticket.firstResponseMinutes,
+              messages: [
+                ...ticket.messages,
+                {
+                  author: view === "team" ? "Roberto" : ticket.contact,
+                  role: view === "team" ? "team" : "client",
+                  time: "Agora",
+                  body,
+                },
+              ],
+            }
+          : ticket,
+      ),
+    );
+  }
+
+  function addInternalNote(ticketId: string, formData: FormData) {
+    const note = String(formData.get("note") ?? "").trim();
+    if (!note) return;
+
+    setTickets((current) =>
+      current.map((ticket) =>
+        ticket.id === ticketId
+          ? {
+              ...ticket,
+              updatedAt: "2026-05-27 16:35",
+              internalNotes: [...ticket.internalNotes, note],
+            }
+          : ticket,
+      ),
+    );
+  }
+
   function createTicket(formData: FormData) {
     const subject = String(formData.get("subject") ?? "").trim();
     const description = String(formData.get("description") ?? "").trim();
@@ -164,6 +253,8 @@ export function App() {
     setActiveStatus("all");
     setCreateOpen(false);
   }
+
+  const selectedSlaState = getSlaState(selectedTicket);
 
   return (
     <div className="app-shell">
@@ -345,6 +436,9 @@ export function App() {
                     <span className={`status-pill ${ticket.status}`}>
                       {statusLabels[ticket.status]}
                     </span>
+                    <span className={`sla-pill ${getSlaState(ticket)}`}>
+                      {getSlaLabel(ticket)}
+                    </span>
                   </div>
                 </button>
               ))}
@@ -392,6 +486,14 @@ export function App() {
                 <dt>Canal</dt>
                 <dd>{selectedTicket.channel}</dd>
               </div>
+              <div>
+                <dt>SLA</dt>
+                <dd>
+                  <span className={`sla-pill ${selectedSlaState}`}>
+                    {getSlaLabel(selectedTicket)}
+                  </span>
+                </dd>
+              </div>
             </dl>
 
             <section className="detail-section">
@@ -426,6 +528,29 @@ export function App() {
                   </article>
                 ))}
               </div>
+              <form
+                className="inline-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  addReply(selectedTicket.id, new FormData(event.currentTarget));
+                  event.currentTarget.reset();
+                }}
+              >
+                <textarea
+                  name="reply"
+                  rows={3}
+                  placeholder={
+                    view === "team"
+                      ? "Escrever resposta ao cliente"
+                      : "Responder à equipa"
+                  }
+                  required
+                />
+                <button className="primary-button" type="submit">
+                  <Send size={16} />
+                  Enviar resposta
+                </button>
+              </form>
             </section>
 
             <section className="detail-section" id="notas">
@@ -435,6 +560,25 @@ export function App() {
                   <li key={note}>{note}</li>
                 ))}
               </ul>
+              <form
+                className="inline-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  addInternalNote(selectedTicket.id, new FormData(event.currentTarget));
+                  event.currentTarget.reset();
+                }}
+              >
+                <textarea
+                  name="note"
+                  rows={3}
+                  placeholder="Adicionar nota interna"
+                  required
+                />
+                <button className="ghost-button" type="submit">
+                  <ShieldCheck size={16} />
+                  Guardar nota
+                </button>
+              </form>
             </section>
           </aside>
         </section>

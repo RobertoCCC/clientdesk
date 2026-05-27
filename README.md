@@ -17,6 +17,10 @@ Demo de portal de clientes e gestão de tickets para PMEs. O objetivo é mostrar
 - Notas internas
 - Portal de cliente com criação simulada de novo pedido
 - Avanço de estado do ticket
+- Persistência local no browser para tickets e alterações
+- Resposta ao cliente diretamente na conversa
+- Notas internas adicionadas pela equipa
+- Indicador visual de SLA por ticket
 
 ## Stack
 
